@@ -6,8 +6,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
+import study.datajpa.dto.MemberDto;
 import study.datajpa.entity.Member;
+import study.datajpa.entity.Team;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,6 +23,8 @@ import static org.junit.jupiter.api.Assertions.*;
 class MemberRepositoryTest {
     @Autowired
     MemberRepository memberRepository;
+    @Autowired
+    TeamRepository teamRepository;
 
     @Test
     public void testMember() throws Exception {
@@ -85,4 +90,89 @@ class MemberRepositoryTest {
         assertThat(result.size()).isEqualTo(1);
     }
 
+
+    @Test
+    public void testQuery() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 10);
+        Member bbb = new Member("AAA",20);
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+        //when
+        List<Member> result = memberRepository.findUser("AAA",10);
+        //when
+    assertThat(result.get(0)).isEqualTo(aaa);
+        //then
+    }
+
+    @Test
+    public void findUserNameListTest() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 10);
+        Member bbb = new Member("AAA",20);
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+        //when
+        List<String> usernameList = memberRepository.findUsernameList();
+
+        for (String s : usernameList) {
+            System.out.println("username : " +      s);
+        }        //then
+
+
+
+    }
+    @Test
+    void findMemberDto() {
+        Team teamA = new Team("teamA");
+        teamRepository.save(teamA);
+        Member memberA = new Member("AAA", 10);
+        memberA.setTeam(teamA);
+        memberRepository.save(memberA);
+
+        List<MemberDto> memberDto = memberRepository.findMemberDto();
+        for (MemberDto dto : memberDto) {
+            System.out.println("memberDto = :" + dto);
+        }
+    }
+
+    @Test
+    public void findByNames() throws Exception {
+        //given
+        getTestMembers(new Member("AAA", 10), new Member("AAA", 20));
+        //when
+        List<Member> result = memberRepository.findByNames(Arrays.asList("AAA", "BBB"));
+        //then
+        for (Member member : result) {
+            System.out.println("members : " +  member);
+        }
+    }
+
+    private void getTestMembers(Member AAA, Member AAA1) {
+        Member aaa = AAA;
+        Member bbb = AAA1;
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+    }
+
+
+    @Test
+    public void returnType() throws Exception {
+        getTestMembers(new Member("AAA", 10), new Member("BBB", 20));
+
+        List<Member> aaa = memberRepository.findListByUsername("AAA");
+        //좋은 점 null일 경우(유저가 없을 겨우) EmptyColection을 return 해준다.
+        //절대 null로 return하지 않는다. != null체크 안해도 됨
+
+        Member aaa1 = memberRepository.findMemberByUsername("AAA");
+        //단건 조회일 경우 없으면 null이다.
+        //JPA는 결과가 없을 경우 noResultAcception이 뜬다.
+        //SpringDataJPA는 그냥 null로 반환 해버린다.
+        //사실 그냥 Optional로 받으면 된다.
+        Optional<Member> aaa2 = memberRepository.findOptionalByUsername("AAA");
+        //만약 한 건 조회인데 2건이상이 조회가 될경우 IncorrectResultSizeDataAccessException이 터진다.
+        //원래 NonUniqueDataException이 터지면, Spring 예외로 변환해서 준다.
+        // why? client가 여러 DB를 사용해도 spring프레임워크가 한번 감싸서 주면
+        //동일한 상황에 동일한 Exception이 넘어올텐데데 그럼 개발자가 동일한 처리를
+        //유지해도 되어서 좋다.
 }
