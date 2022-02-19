@@ -33,7 +33,7 @@ class MemberRepositoryTest {
         //when
         Member save = memberRepository.save(m);
         Optional<Member> findMember = memberRepository.findById(save.getId());
-        findMember.orElseGet(()->new Member("default"));
+        findMember.orElseGet(() -> new Member("default"));
         //then
         assertThat(findMember.get().getUsername()).isEqualTo(save.getUsername());
         assertThat(findMember.get().getId()).isEqualTo(save.getId());
@@ -79,11 +79,11 @@ class MemberRepositoryTest {
     public void findByUsernameAndAgeGreaterThen() throws Exception {
         //given
         Member aaa = new Member("AAA", 10);
-        Member bbb = new Member("AAA",20);
+        Member bbb = new Member("AAA", 20);
         memberRepository.save(aaa);
         memberRepository.save(bbb);
         //when
-        List<Member> result = memberRepository.findByusernameAndAgeGreaterThan("AAA",15);
+        List<Member> result = memberRepository.findByusernameAndAgeGreaterThan("AAA", 15);
         //then
         assertThat(result.get(0).getUsername()).isEqualTo("AAA");
         assertThat(result.get(0).getAge()).isEqualTo(20);
@@ -95,13 +95,13 @@ class MemberRepositoryTest {
     public void testQuery() throws Exception {
         //given
         Member aaa = new Member("AAA", 10);
-        Member bbb = new Member("AAA",20);
+        Member bbb = new Member("AAA", 20);
         memberRepository.save(aaa);
         memberRepository.save(bbb);
         //when
-        List<Member> result = memberRepository.findUser("AAA",10);
+        List<Member> result = memberRepository.findUser("AAA", 10);
         //when
-    assertThat(result.get(0)).isEqualTo(aaa);
+        assertThat(result.get(0)).isEqualTo(aaa);
         //then
     }
 
@@ -109,19 +109,19 @@ class MemberRepositoryTest {
     public void findUserNameListTest() throws Exception {
         //given
         Member aaa = new Member("AAA", 10);
-        Member bbb = new Member("AAA",20);
+        Member bbb = new Member("AAA", 20);
         memberRepository.save(aaa);
         memberRepository.save(bbb);
         //when
         List<String> usernameList = memberRepository.findUsernameList();
 
         for (String s : usernameList) {
-            System.out.println("username : " +      s);
+            System.out.println("username : " + s);
         }        //then
 
 
-
     }
+
     @Test
     void findMemberDto() {
         Team teamA = new Team("teamA");
@@ -144,7 +144,7 @@ class MemberRepositoryTest {
         List<Member> result = memberRepository.findByNames(Arrays.asList("AAA", "BBB"));
         //then
         for (Member member : result) {
-            System.out.println("members : " +  member);
+            System.out.println("members : " + member);
         }
     }
 
@@ -175,4 +175,5 @@ class MemberRepositoryTest {
         // why? client가 여러 DB를 사용해도 spring프레임워크가 한번 감싸서 주면
         //동일한 상황에 동일한 Exception이 넘어올텐데데 그럼 개발자가 동일한 처리를
         //유지해도 되어서 좋다.
+    }
 }
