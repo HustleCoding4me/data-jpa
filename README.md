@@ -188,3 +188,145 @@ public interface MemberRepository extends JpaRepository<Member,Long> {
 </table>
 
 참고 <https://spring.io/projects/spring-data-jpa>
+
+
+
+2. 메소드 이름으로 JPA NamedQuery 호출 
+
+> Member Entity 위에 @NamedQuery로 name, query 선언한다.
+
+```java
+@NamedQuery(
+        name="Member.findByUsername",
+        query="select m from Member m where m.username = :username"
+)
+public class Member {
+```
+
+> JpaRepository를 상속한 interface에서 @Query 문구를 붙여준다.
+
+```java
+public interface MemberRepository extends JpaRepository<Member,Long> {
+    List<Member> findByusernameAndAgeGreaterThan(String username, int age);
+
+    @Query(name = "Member.findByUsername")
+    List<Member> findByUsername(@Param("username") String username);
+}
+```
+> 실행 순서
+>> @Query를 없애도 Named 규칙을 먼저 찾아 실행한다. (Entity.선언한 메서드 이름)
+>> Named 쿼리가 없으면 메서드내임생성규칙으로 실행한다.
+
+> 장단점
+>> 장점
+>>> @NamedQuery 어노테이션 하위에 query= ""로 선언하면, compile 단계에서 오류를 잡아준다.
+>>> em.createQuery 시에는 모두 String이라 해당 기능이 실행되기 전까지 compile 단계에서 에러를 잡아주지 못함.
+```java
+@NamedQuery(
+        name="Member.findByUsername",
+        query="select m from Member m where m.usernamefuc = :username" //username 에 오타가 난 모습
+)
+public class Member {
+```
+![image](https://user-images.githubusercontent.com/37995817/154790773-2176dda4-0f4b-40ce-9057-60da72728849.png)
+
+
+>> 단점
+>>> 3번 방법인 직접 Query 사용이 막강해서 잘 쓰이지 않는다.
+
+3. 인터페이스 메서드에 직접 @Query로 실행 JPQL 삽입
+
+```java
+@Query("select m from Member m where m.username = :username and m.age = :age")
+    List<Member> findUser(@Param("username") String username, @Param("age") int age);
+```
+
+### @Query로 Dto, 특정 table 값 가져오기
+> 기본적인 JPQL 값을 선언해주는 것은 똑같다.
+> Dto class를 생성해서 생성자 선언, @Quert("JPQL")안에 new로 선언해주며 Dto 생성해주면서 가져오면 된다.
+> 특정 Entity의 value를 가져오는 것은 JPQL에서 해당 value 가져오게 선언, 가져올 List나 해당 Value에 맞는 속성을 적어주면 된다.
+
+```java
+   //Member의 username만 가져오는 경우. List<String> 으로 username 속성을 맞춰줌
+    @Query("select m.username from Member m")
+    List<String> findUsernameList();
+   
+   
+   //MemberDto로 Mapping 하여 받는 경우
+    @Query("select new study.datajpa.dto.MemberDto(m.id, m.username, t.name) from Member m join m.team t")
+    List<MemberDto> findMemberDto();
+```
+
+> @Query의 파라미터 바인딩은 @Param을 삽입해주는 것으로 해결한다.
+
+```java
+  @Query(name = "Member.findByUsername")
+    List<Member> findByUsername(@Param("username") String username);//@Param으로 username을 삽입해주는 경우. JPQL의 :username이 선언되어 잇을 것이다.
+```
+> 이 파라미터로 이름 뿐만 아니라 Collection 삽입도 가능하다. (In절 같은)
+
+```java
+    @Query("select m from Member m where username in :names")
+    List<Member> findByNames(@Param("names") Collection<String> names);
+```
+
+> Test모습
+
+```java
+    @Test
+    public void findByNames() throws Exception {
+        //given
+        getTestMembers(new Member("AAA", 10), new Member("AAA", 20));
+        //when
+        List<Member> result = memberRepository.findByNames(Arrays.asList("AAA", "BBB")); //리스트로 넣어주는 모습
+        //then
+        for (Member member : result) {
+            System.out.println("members : " +  member);
+        }
+    }
+```
+
+> 장단점
+>> 장점
+>>> 이름이 없는 Named쿼리라 생각하면 된다. 컴파일 시점에 @Query에 멤버변수 오타나 이런 것들을 잡아준다.
+
+
+#### SpringDataJPA 유연한 ReturnType으로 파라미터 받기
+
+> SpringDataJPA는 선언한 반환타입으로 받을 수 있다.
+
+```java
+   List<Member> findListByUsername(String username);//컬렉션
+    Member findMemberByUsername(String username);//단건
+    Optional<Member> findOptionalByUsername(String username);//단건Optional
+```
+
+```java
+
+@Test
+    public void returnType() throws Exception {
+        getTestMembers(new Member("AAA", 10), new Member("BBB", 20));
+
+        List<Member> aaa = memberRepository.findListByUsername("AAA");
+        
+        Member aaa1 = memberRepository.findMemberByUsername("AAA");
+
+        Optional<Member> aaa2 = memberRepository.findOptionalByUsername("AAA");
+        
+
+```
+> 예외 Return시
+1. List로 Return 받는 경우
+   - 좋은 점은 `null`일 경우(유저가 없을 겨우) `EmptyColection`을 return 해준다.
+   - 절대 `null`로 return하지 않는다. != null체크 안해도 됨
+2. 단건 조회, Optional 단건 조회
+  - 단건 조회일 경우 없으면 `null`이다.
+  - `JPA`는 결과가 없을 경우 `noResultAcception`이 뜬다.
+  - `SpringDataJPA`는 그냥 `null`로 반환 해버린다.
+  - 사실 그냥 `Optional`로 받으면 된다. (Optional이 나오기 전까지 null로 return이 낫다. 그냥 Exception으로 중단이 낫다 분쟁거리였음)
+> ※ 만일 단일 조회인데 2건 이상 querty에서 return이 된다면?
+
+  - 만약 한 건 조회인데 2건이상이 조회가 될경우 `SpringFrameWork`의 `IncorrectResultSizeDataAccessException`이 터진다.
+  - 원래 `NonUniqueDataException`이 터지지지만, `SpringFrameWork`의 예외로 변환해서 준다.
+  - `why?` `client`가 여러 `DB`를 사용해도 `SpringFrameWork`가 한번 감싸서 주면
+  - 동일한 상황에 동일한 `Exception`이 넘어올텐데데 그럼 개발자가 동일한 처리를 유지해도 되어서 좋다.
