@@ -451,3 +451,253 @@ public class Member {
 </tr>
 </tbody>
 </table>
+
+
+
+#### 순수 JPA vs SpringDataJPA Paging, Sort 작업
+
+### 순수 JPA
+> ※offset = 넘기는 data 건수 , limit = 한번에 몇 개 가져올까
+
+> 순수 JPA는 JPQL로 작성한다. EntityManager의 구현된 Method를 사용함.
+>> setFirstResult(처음에서 몇번째 이후?) , setMaxResults(거기서 몇개 가져올지)
+```java
+    public List<Member> findByPage(int age, int offset, int limit) {
+        return em.createQuery("select m from Member m where m.age = :age order by m.username desc")
+                .setParameter("age", age)
+                .setFirstResult(offset)
+                .setMaxResults(limit)
+                .getResultList();
+    }
+
+```
+
+### SpringDataJPA
+
+> 특수한 interface 반환 타입(Page,Slice) 를 사용해서 반환을 받아서 꺼내 사용하면 된다.
+
+```java
+@Query(value = "select m from Member m left join m.team t", countQuery = "select count(m) from Member m")
+    Page<Member> findByAgePage(int age, Pageable pageable);
+
+    Slice<Member> findByAgeSlice(int age, Pageable pageable);
+```
+
+>> Pageable은 interface로, limit, offset, Sort 조건 등을 붙여서 사용한다.
+
+```java
+//나이가 10살, offset 0, limit 3, username DESC 조건을 담은 경우
+int age = 10;
+PageRequest pageRequest = PageRequest.of(0, 3, Sort.by(Sort.Direction.DESC, "username"));
+Page<Member> page = memberRepository.findByAgePage(age, pageRequest);
+```
+
+>> Page 특징
+>> 기본 select, TotalCount 쿼리 2번을 날린다. 아래와 같은 기능을 가지고 있다.
+   ```java
+        List<Member> content = page.getContent(); //내부 실제 Data 꺼내기
+        assertThat(page.getTotalElements()).isEqualTo(6); //총 개수
+        assertThat(page.getNumber()).isEqualTo(0); // 현재 페이지 번호
+        assertThat(page.getTotalPages()).isEqualTo(2); //전체 페이지 번호
+        assertThat(page.isFirst()).isTrue(); //첫번째 페이지인가
+        assertThat(page.hasNext()).isTrue(); //다음이 있는가 (더보기 같은 기능 구현시 좋음)
+   ```
+
+>> Slice 특징
+>> 모바일의 더보기 기능과 같이 간결한 기능. 전체 페이지나 개수를 가져오지 않는다. 
+>> 쿼리가 1번만 나가는데, 기존 개수 +1개로 날려 다음이 있는지 없는지 check가 가능하다. 모바일 더보기 구현시 유용. TotalCount X
+   ```java
+    assertThat(content.size()).isEqualTo(3);
+                assertThat(page.getNumber()).isEqualTo(0);//페이지 번호
+        
+        assertThat(slice.isFirst()).isTrue();//첫번째 페이지인가
+        assertThat(slice.hasNext()).isTrue();//다음이 있는가 (더보기 같은 기능 구현시 좋음)
+   ```
+
+#### `순수 JPA` vs `SpringDataJPA` /dirtyChecking 말고 대용량 data 총 `Update` 할 경우
+
+> ex 전 직원 월급 10퍼센트 인상, 나이 1살 증가 등 전체 작업이 나올 때
+
+### 순수 JPA
+
+```java
+//JPARepository
+//전직원 나이 +1
+public int bulkAgePlus(int age) {
+         return  em.createQuery("update Member m set m.age = m.age + 1" +
+                        " where m.age >= :age")
+                .setParameter("age", age)
+                .executeUpdate(); //executeUpdate를 꼭 해줘야 한다.
+    }
+```
+
+
+### SpringDataJPA
+
+
+> 유의점 @Modifying
+
+```java
+@Modifying //executeUpdate()를 호출해주는아이. 이게 없으면 getResultList를 호출한다.
+    @Query("update Member m set m.age = m.age + 1 where m.age >= :age")
+    int bulkAgePlus(@Param("age") int age);
+
+```
+
+
+
+> ※주의사항. 영속성 Context 상관없이 DB에 바로 삽입 연산을 한다. 영속성 Context에는 여전히 update 이전 값 있음.
+> ex) update문 호출 이후, 해당 객체 가져오기
+ 
+```java
+@Test
+    public void checkBulkDirtyChecking() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 11);
+        Member bbb = new Member("BBB",12);
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+        Member ccc = new Member("CCC", 13);
+        Member ddd = new Member("DDD",14);
+        memberRepository.save(ccc);
+        memberRepository.save(ddd);
+        Member eee = new Member("EEE", 15);
+        Member fff = new Member("FFF",100);
+        memberRepository.save(eee);
+        memberRepository.save(fff);
+
+        //when
+        List<Member> findMemberBeforeBulk = memberRepository.findByUsername("FFF");
+        int resultCount = memberRepository.bulkAgePlus(10); //벌크 update execute
+        List<Member> findAfterBulkMember = memberRepository.findByUsername("FFF");
+        //DB는 101인데, 둘 다 100으로 출력된다.
+        //then
+        System.out.println("findMemberBeforeBulk : " + findMemberBeforeBulk.get(0).getAge());
+        System.out.println("findAfterBulkMember : " + findAfterBulkMember.get(0).getAge());
+
+    }
+
+```
+
+>> DB에는 101살로 +1 Update 실행 되었지만, 영속성 Context가 그대로라 두 나이가 모두 100살로, update전이다. 
+![image](https://user-images.githubusercontent.com/37995817/154835574-ceed115e-ebc9-4d3c-a66d-464246f2ea39.png)
+
+> 따라서, 영속성 Context를 초기화 해주는 entityMnager.clear()를 하거나, @Modifying(clearAutomatically = true) 옵션을 사용한ㄷ.
+
+```java
+@Modifying(clearAutomatically = true) //executeUpdate()를 호출해주는아이. 이게 없으면 getResultList를 호출한다.
+    @Query("update Member m set m.age = m.age + 1 where m.age >= :age")
+    int bulkAgePlus(@Param("age") int age);
+}
+```
+
+```java
+      //when
+        List<Member> findMemberBeforeBulk = memberRepository.findByUsername("FFF");
+        int resultCount = memberRepository.bulkAgePlus(10);
+        em.flush();//혹시 모를 내보내기
+        em.clear();//clear 영속성 Context 초기화
+        List<Member> findAfterBulkMember = memberRepository.findByUsername("FFF");
+
+        //then
+        System.out.println("findMemberBeforeBulk : " + findMemberBeforeBulk.get(0).getAge()); //100
+        System.out.println("findAfterBulkMember : " + findAfterBulkMember.get(0).getAge()); //101
+
+``
+
+![image](https://user-images.githubusercontent.com/37995817/154835820-6fa9552c-a0a0-4bca-a612-29d549ba6b08.png)
+
+
+#### 실무 성능개선, Tip
+
+### Paging
+
+> SpringDataJpa Page 객체로 Paging 시에 totalCount 가져올 때, 총 개수가 많을 수도 있기 때문에 성능 저하가 올 수 있다.
+> join도 맺어진대로 그대로 가져오기 때문. 따라서 totalCount를 가져올 때 쿼리를 따로 설정할 수 있다.
+
+> @Query의  countQuery를 따로 세팅해준 모습
+```java
+@Query(value = "select m from Member m left join m.team t", countQuery = "select count(m) from Member m")
+    Page<Member> findByAgePage(int age, Pageable pageable);
+```
+
+> Page를 유지하면서 MemberDto로 변경하는 법
+>> Return받은 Page 객체에 직접 map 스트림 연결을 해서 변경 가능하다.
+
+```java
+page.map(member -> new MemberDto(member.getId(),member.getUsername(),"teamA"));
+```
+
+> Sort 조건이 길어지면, 그냥 @Query로 세팅해주는게 좋다.
+```java
+   @Query(value = "select m from Member m left join m.team t order by m.username desc", countQuery = "select count(m) from Member m")
+    Page<Member> findByAgePage(int age, Pageable pageable);
+
+```
+
+### Bulk Update
+
+> ※주의사항. 영속성 Context 상관없이 DB에 바로 삽입 연산을 한다. 영속성 Context에는 여전히 update 이전 값 있음.
+> ex) update문 호출 이후, 해당 객체 가져오기
+ 
+```java
+@Test
+    public void checkBulkDirtyChecking() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 11);
+        Member bbb = new Member("BBB",12);
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+        Member ccc = new Member("CCC", 13);
+        Member ddd = new Member("DDD",14);
+        memberRepository.save(ccc);
+        memberRepository.save(ddd);
+        Member eee = new Member("EEE", 15);
+        Member fff = new Member("FFF",100);
+        memberRepository.save(eee);
+        memberRepository.save(fff);
+
+        //when
+        List<Member> findMemberBeforeBulk = memberRepository.findByUsername("FFF");
+        int resultCount = memberRepository.bulkAgePlus(10); //벌크 update execute
+        List<Member> findAfterBulkMember = memberRepository.findByUsername("FFF");
+        //DB는 101인데, 둘 다 100으로 출력된다.
+        //then
+        System.out.println("findMemberBeforeBulk : " + findMemberBeforeBulk.get(0).getAge());
+        System.out.println("findAfterBulkMember : " + findAfterBulkMember.get(0).getAge());
+
+    }
+
+```
+
+>> DB에는 101살로 +1 Update 실행 완료 
+![image](https://user-images.githubusercontent.com/37995817/154835574-ceed115e-ebc9-4d3c-a66d-464246f2ea39.png)
+
+
+> 따라서, 영속성 Context를 초기화 해주는 entityMnager.clear()를 하거나, @Modifying(clearAutomatically = true) 옵션을 사용한다.
+
+```java
+@Modifying(clearAutomatically = true) //executeUpdate()를 호출해주는아이. 이게 없으면 getResultList를 호출한다.
+    @Query("update Member m set m.age = m.age + 1 where m.age >= :age")
+    int bulkAgePlus(@Param("age") int age);
+}
+```
+
+```java
+      //when
+        List<Member> findMemberBeforeBulk = memberRepository.findByUsername("FFF");
+        int resultCount = memberRepository.bulkAgePlus(10);
+        em.flush();//혹시 모를 내보내기
+        em.clear();//clear 영속성 Context 초기화
+        List<Member> findAfterBulkMember = memberRepository.findByUsername("FFF");
+
+        //then
+        System.out.println("findMemberBeforeBulk : " + findMemberBeforeBulk.get(0).getAge()); //100
+        System.out.println("findAfterBulkMember : " + findAfterBulkMember.get(0).getAge()); //101
+
+``
+
+![image](https://user-images.githubusercontent.com/37995817/154835820-6fa9552c-a0a0-4bca-a612-29d549ba6b08.png)
+
+> 물론 `bulk update` 이후 `Transaction`을 한번 끝내는게 좋다 (다른 작업 X)
+> 해당은 `mybatis`, 다른 `jdbc template` 등을 혼합하여 사용할 때도 해당하는 내용이다. 이런 경우도 영속성 Context를 clear 해줘야 한다.
