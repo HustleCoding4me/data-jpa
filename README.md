@@ -609,6 +609,81 @@ public int bulkAgePlus(int age) {
 ![image](https://user-images.githubusercontent.com/37995817/154835820-6fa9552c-a0a0-4bca-a612-29d549ba6b08.png)
 
 
+
+#### JPA Hint & Lock
+
+> `Jpa Hint` 는 SQL에 주는 힌트가 아니라 `JPA interface`에 주는 힌트다.<br>
+> 대표적인 예로 기본적인 JPA의 select 들은 dirtyChecking을 염두에 두고 자신 Entity와 변경감지 Entity 두개씩 가지게 되어 메모리를 조금 더 먹는다.<br>
+> 이걸 JPA Hint로 Update를 염두에 두지 않게 ReadOnly 조건을 true로 걸어두면, dirtyChecking을 위한 별도의 객체를 만들지 않아 메모리적으로 유리할 수 있다.<br>
+> Hint는 Hibernate에만 있다.
+
+```java
+ //Hint
+    @QueryHints(value = @QueryHint(name = "org.hibernate.readOnly", value="true"))
+    Member findReadOnlyByUsername(String username);
+```
+
+```java
+@Test
+    public void queryHint() throws Exception {
+        //given
+        Member member1 = memberRepository.save(new Member("member1", 10));
+        em.flush();
+        em.clear();
+        //flush까지는 영속성 Context가 남아있고, clear 할 때 날아간다.
+        //when
+        Member findMember = memberRepository.findById(member1.getId()).get();
+        findMember.setUsername("member2");
+        em.flush();
+        //변경 감지가 발생해서 update가 됨.
+        //변경 하려면 원본과 비교할 가상 Entity를 셋팅해놓는다.
+        //그래서 Select만 할거라고 Hint를 주는거다. Hint는 Hibernate만 있음.
+
+        Member findMemberReadOnly = memberRepository.findReadOnlyByUsername("member2");
+        findMember.setUsername("hihi");
+        em.flush();
+        //변경 감지가 이루어지지 않는다.
+        //update문이 나가지 않는다. 이미 readOnly로 애초에 Update를 염두에 두지 않는다.
+    }
+```
+
+
+> `Jpa Lock`은 select 때부터 다른 애들이 건드리지 말라고 선언하는 식의 isolation 단계 설정 등과 밀접하다.
+
+```java
+    //select for update
+    //lock : select때부터 다른애들이 건들지 말라고 선언하는 것
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    List<Member> findLockByUsername(String username);
+```
+
+>> 쿼리 끝에 for Update가 붙어서 나가는 것을 확인할 수 있다.
+
+```sql
+    select
+        member0_.member_id as member_i1_0_,
+        member0_.age as age2_0_,
+        member0_.team_id as team_id4_0_,
+        member0_.username as username3_0_ 
+    from
+        member member0_ 
+    where
+        member0_.username=? for update
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #### 실무 성능개선, Tip
 
 ### Paging
