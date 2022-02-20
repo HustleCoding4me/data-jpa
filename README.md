@@ -580,6 +580,7 @@ public int bulkAgePlus(int age) {
 ```
 
 >> DB에는 101살로 +1 Update 실행 되었지만, 영속성 Context가 그대로라 두 나이가 모두 100살로, update전이다. 
+
 ![image](https://user-images.githubusercontent.com/37995817/154835574-ceed115e-ebc9-4d3c-a66d-464246f2ea39.png)
 
 > 따라서, 영속성 Context를 초기화 해주는 entityMnager.clear()를 하거나, @Modifying(clearAutomatically = true) 옵션을 사용한ㄷ.
@@ -603,7 +604,7 @@ public int bulkAgePlus(int age) {
         System.out.println("findMemberBeforeBulk : " + findMemberBeforeBulk.get(0).getAge()); //100
         System.out.println("findAfterBulkMember : " + findAfterBulkMember.get(0).getAge()); //101
 
-``
+```
 
 ![image](https://user-images.githubusercontent.com/37995817/154835820-6fa9552c-a0a0-4bca-a612-29d549ba6b08.png)
 
@@ -671,6 +672,7 @@ page.map(member -> new MemberDto(member.getId(),member.getUsername(),"teamA"));
 ```
 
 >> DB에는 101살로 +1 Update 실행 완료 
+
 ![image](https://user-images.githubusercontent.com/37995817/154835574-ceed115e-ebc9-4d3c-a66d-464246f2ea39.png)
 
 
@@ -695,9 +697,62 @@ page.map(member -> new MemberDto(member.getId(),member.getUsername(),"teamA"));
         System.out.println("findMemberBeforeBulk : " + findMemberBeforeBulk.get(0).getAge()); //100
         System.out.println("findAfterBulkMember : " + findAfterBulkMember.get(0).getAge()); //101
 
-``
+```
 
-![image](https://user-images.githubusercontent.com/37995817/154835820-6fa9552c-a0a0-4bca-a612-29d549ba6b08.png)
+
+![image](https://user-images.githubusercontent.com/37995817/154836002-a0a070be-ce16-4383-a6bf-a8f2911ba293.png)
+
 
 > 물론 `bulk update` 이후 `Transaction`을 한번 끝내는게 좋다 (다른 작업 X)
 > 해당은 `mybatis`, 다른 `jdbc template` 등을 혼합하여 사용할 때도 해당하는 내용이다. 이런 경우도 영속성 Context를 clear 해줘야 한다.
+
+### `Fetch Join`이란 ? N + 1 쿼리 문제의 해결책
+
+>`N+1 쿼리` 문제점이란?
+>> 팀이 A,B,C가 있고, `각각 Team`에 속해있는 `userA,userB,userC`가 있을 때, User를 조회하면, 
+>> 기본적으로 Member에 Team은 `LAZYLOADING`으로 구현되어있을 것이다. 그럼 Spring은 Member.Team을 `Proxy객체`로 채워서 가져오고, 추후에 Member.Team을
+>> 사용할 때 Team을 `Select`쿼리를 날려 가져온다. (사용시점에 가져옴)
+>> 그럼, 최악의 경우 모든 User를 순회한다면, `Select Member(1) + Select Team where userId = 해당 유저 ID (멤버의 수 N)` 처럼 
+>> `1 + 멤버의 수` 만큼 query가 나간다. (유저가 10000명이면 10001번 나간다..)
+
+>>> JPQL에서 `fetch join` 해서 객체 그래프와 연관된 모든 객체를 최초에 모두 `join`해서 가져오기 때문에 `Proxy 객체`가 아닌 `실 객체`를 최초 1회에 가져온다.
+
+```java
+@Query("select m from Member m left join fetch m.team")
+    List<Member> findMemberFetchJoin();
+```
+
+```sql
+  select
+        member0_.member_id as member_i1_0_0_,
+        team1_.team_id as team_id1_1_1_,
+        member0_.age as age2_0_0_,
+        member0_.team_id as team_id4_0_0_,
+        member0_.username as username3_0_0_,
+        team1_.name as name2_1_1_ 
+    from
+        member member0_ 
+    left outer join
+        team team1_ 
+            on member0_.team_id=team1_.team_id
+```
+>>> 최초 모든 `Member`를 가져올 때, `Member`의 `Team`을 `Proxy객체`가 아닌, 실제 `Team Entity`를 담아서 `Member`들을 `Return`해준다.
+>>> 따라서 `LazyLoading`으로 인해 `1+N` 쿼리가 나가 성능 저하를 일으키는 문제를 해결할 수 있다. 
+
+>>> `SpringDataJpa`에서는 `@EntityGraph`로 해결한다. (결국 쿼리에 `fetch join`을 삽입하는것과 같은 동작)
+
+```java
+//이미 구현된 `findAll`을 `@Overrid`해서 `@EntityGraph`를 추가한 모습
+   @Override
+    @EntityGraph(attributePaths = {"team"})
+    List<Member> findAll();
+//직접 만든 method에 추가한 모습 (`@Query`에 fetch조인을 넣지 않고 `@EntitnyGraph`로 추가한 모습)
+    @EntityGraph(attributePaths = {"team"})
+    @Query("select m from Member m")
+    List<Member> findMemberEntityGraph();
+//메서드 이름 생성방식으로 만들어서 `@EntityGraph`를 추가한 모습
+    @EntityGraph(attributePaths = {"team"})
+    List<Member> findEntityGraphByUsername(@Param("username")String username );
+```
+
+ 
