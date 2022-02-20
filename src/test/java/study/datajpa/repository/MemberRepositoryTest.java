@@ -4,12 +4,18 @@ import org.assertj.core.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.Sort;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.transaction.annotation.Transactional;
 import study.datajpa.dto.MemberDto;
 import study.datajpa.entity.Member;
 import study.datajpa.entity.Team;
 
+import javax.persistence.EntityManager;
+import javax.persistence.PersistenceContext;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +31,8 @@ class MemberRepositoryTest {
     MemberRepository memberRepository;
     @Autowired
     TeamRepository teamRepository;
+    @PersistenceContext
+    EntityManager em;
 
     @Test
     public void testMember() throws Exception {
@@ -175,5 +183,173 @@ class MemberRepositoryTest {
         // why? client가 여러 DB를 사용해도 spring프레임워크가 한번 감싸서 주면
         //동일한 상황에 동일한 Exception이 넘어올텐데데 그럼 개발자가 동일한 처리를
         //유지해도 되어서 좋다.
+    }
+
+    @Test
+    public void paging() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 10);
+        Member bbb = new Member("BBB", 10);
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+        Member ccc = new Member("CCC", 10);
+        Member ddd = new Member("DDD", 10);
+        memberRepository.save(ccc);
+        memberRepository.save(ddd);
+        Member eee = new Member("EEE", 10);
+        Member fff = new Member("FFF", 10);
+        memberRepository.save(eee);
+        memberRepository.save(fff);
+
+        int age = 10;
+        PageRequest pageRequest = PageRequest.of(0, 3, Sort.by(Sort.Direction.DESC, "username"));
+        //when
+        Page<Member> page = memberRepository.findPageByAge(age, pageRequest);
+        //then
+        //내부 실제 Data 꺼내기
+        List<Member> content = page.getContent();
+        long totalElements = page.getTotalElements();
+
+        for (Member member : content) {
+            System.out.println("Member : " + member);
+        }
+        System.out.println("totalElements : " + totalElements);
+
+        assertThat(content.size()).isEqualTo(3);
+        assertThat(page.getTotalElements()).isEqualTo(6);
+        assertThat(page.getNumber()).isEqualTo(0);//페이지 번호
+        assertThat(page.getTotalPages()).isEqualTo(2);//전체 페이지 번호
+        assertThat(page.isFirst()).isTrue();//첫번째 페이지인가
+        assertThat(page.hasNext()).isTrue();//다음이 있는가 (더보기 같은 기능 구현시 좋음)
+    }
+
+    @Test
+    public void slicing() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 10);
+        Member bbb = new Member("BBB", 10);
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+        Member ccc = new Member("CCC", 10);
+        Member ddd = new Member("DDD", 10);
+        memberRepository.save(ccc);
+        memberRepository.save(ddd);
+        Member eee = new Member("EEE", 10);
+        Member fff = new Member("FFF", 10);
+        memberRepository.save(eee);
+        memberRepository.save(fff);
+
+        int age = 10;
+        PageRequest pageRequest = PageRequest.of(0, 3, Sort.by(Sort.Direction.DESC, "username"));
+        //when
+        Slice<Member> page = memberRepository.findSliceByAge(age, pageRequest);
+        //then
+        //내부 실제 Data 꺼내기
+        List<Member> content = page.getContent();
+        //long totalElements = page.getTotalElements();
+
+        for (Member member : content) {
+            System.out.println("Member : " + member);
+        }
+        //System.out.println("totalElements : " + totalElements);
+
+        assertThat(content.size()).isEqualTo(3);
+        //assertThat(page.getTotalElements()).isEqualTo(6);
+        assertThat(page.getNumber()).isEqualTo(0);//페이지 번호
+        //assertThat(page.getTotalPages()).isEqualTo(2);//전체 페이지 번호
+        assertThat(page.isFirst()).isTrue();//첫번째 페이지인가
+        assertThat(page.hasNext()).isTrue();//다음이 있는가 (더보기 같은 기능 구현시 좋음)
+
+        page.map(member -> new MemberDto(member.getId(), member.getUsername(), "teamA"));
+    }
+
+    @Test
+    public void bulkUpdate() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 11);
+        Member bbb = new Member("BBB", 12);
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+        Member ccc = new Member("CCC", 13);
+        Member ddd = new Member("DDD", 14);
+        memberRepository.save(ccc);
+        memberRepository.save(ddd);
+        Member eee = new Member("EEE", 15);
+        Member fff = new Member("FFF", 16);
+        memberRepository.save(eee);
+        memberRepository.save(fff);
+        //when
+        //10살 이상 모두 +1
+        int resultCount = memberRepository.bulkAgePlus(10);
+        //then
+        assertThat(resultCount).isEqualTo(6);
+    }
+
+    @Test
+    public void checkBulkDirtyChecking() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 11);
+        Member bbb = new Member("BBB", 12);
+        memberRepository.save(aaa);
+        memberRepository.save(bbb);
+        Member ccc = new Member("CCC", 13);
+        Member ddd = new Member("DDD", 14);
+        memberRepository.save(ccc);
+        memberRepository.save(ddd);
+        Member eee = new Member("EEE", 15);
+        Member fff = new Member("FFF", 100);
+        memberRepository.save(eee);
+        memberRepository.save(fff);
+
+        //when
+        List<Member> findMemberBeforeBulk = memberRepository.findByUsername("FFF");
+        int resultCount = memberRepository.bulkAgePlus(10);
+        em.flush();
+        em.clear();
+        List<Member> findAfterBulkMember = memberRepository.findByUsername("FFF");
+
+        //DB는 101인데, 둘 다 100으로 출력된다.
+        //then
+        System.out.println("findMemberBeforeBulk : " + findMemberBeforeBulk.get(0).getAge());
+        System.out.println("findAfterBulkMember : " + findAfterBulkMember.get(0).getAge());
+
+    }
+
+    @Test
+    public void findMemberLazy() throws Exception {
+        //given
+        //member1 -> teamA
+        //member2 -> teamB
+        Team teamA = new Team("teamA");
+        Team teamB = new Team("teamB");
+        teamRepository.save(teamA);
+        teamRepository.save(teamB);
+        Member member1 = new Member("member1", 10, teamA);
+        Member member2 = new Member("member2", 10, teamB);
+        memberRepository.save(member1);
+        memberRepository.save(member2);
+
+        //fetchType LAZY라 member를 조회할 때 ,Team은 최초에 proxy로 가져온다.
+        //지연로딩.
+
+        em.flush();
+        em.clear();
+
+        //when
+
+      /*  List<Member> members = memberRepository.findAll();
+        for (Member member : members) {
+            System.out.println("memberNm = " + member.getUsername());
+            System.out.println("memberTeam = " + member.getTeam().getName());
+        }*/
+        List<Member> memberFetchJoin = memberRepository.findMemberFetchJoin();
+        for (Member member : memberFetchJoin) {
+            System.out.println("memberNm = " + member.getUsername());
+            System.out.println("TeamClass : " + member.getTeam().getClass());
+            System.out.println("memberTeam = " + member.getTeam().getName());
+        }
+        //then
+
+
     }
 }

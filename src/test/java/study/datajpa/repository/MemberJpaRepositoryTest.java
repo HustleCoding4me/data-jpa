@@ -82,4 +82,55 @@ class MemberJpaRepositoryTest {
         assertThat(result.get(0).getAge()).isEqualTo(20);
         assertThat(result.size()).isEqualTo(1);
     }
+
+
+    @Test
+    public void paging() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 10);
+        Member bbb = new Member("BBB",10);
+        memberJpaRepository.save(aaa);
+        memberJpaRepository.save(bbb);
+        Member ccc = new Member("CCC", 10);
+        Member ddd = new Member("DDD",10);
+        memberJpaRepository.save(ccc);
+        memberJpaRepository.save(ddd);
+        Member eee = new Member("EEE", 10);
+        Member fff = new Member("FFF",10);
+        memberJpaRepository.save(eee);
+        memberJpaRepository.save(fff);
+        int age = 10;
+        int offset = 3;
+        int limit = 3;
+        //when
+        List<Member> members = memberJpaRepository.findByPage(age, offset, limit);
+        long totalCount = memberJpaRepository.totalCount(age);
+        //then
+        assertThat(members.size()).isEqualTo(3);
+        assertThat(totalCount).isEqualTo(6);
+
+    }
+
+    @Test
+    public void bulkUpdate() throws Exception {
+        //given
+        Member aaa = new Member("AAA", 11);
+        Member bbb = new Member("BBB",12);
+        memberJpaRepository.save(aaa);
+        memberJpaRepository.save(bbb);
+        Member ccc = new Member("CCC", 13);
+        Member ddd = new Member("DDD",14);
+        memberJpaRepository.save(ccc);
+        memberJpaRepository.save(ddd);
+        Member eee = new Member("EEE", 15);
+        Member fff = new Member("FFF",16);
+        memberJpaRepository.save(eee);
+        memberJpaRepository.save(fff);
+
+        //when
+        //10살 이상 모두 +1
+        int resultCount = memberJpaRepository.bulkAgePlus(10);
+        //then
+        assertThat(resultCount).isEqualTo(6);
+    }
 }
