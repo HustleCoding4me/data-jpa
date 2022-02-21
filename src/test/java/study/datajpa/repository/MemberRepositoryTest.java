@@ -349,7 +349,43 @@ class MemberRepositoryTest {
             System.out.println("memberTeam = " + member.getTeam().getName());
         }
         //then
+    }
 
+    @Test
+    public void queryHint() throws Exception {
+        //given
+        Member member1 = memberRepository.save(new Member("member1", 10));
+        em.flush();
+        em.clear();
+        //flush까지는 영속성 Context가 남아있고, clear 할 때 날아간다.
+        //when
+        Member findMember = memberRepository.findById(member1.getId()).get();
+        findMember.setUsername("member2");
+        em.flush();
+        //변경 감지가 발생해서 update가 됨.
+        //변경 하려면 원본과 비교할 가상 Entity를 셋팅해놓는다.
+        //그래서 Select만 할거라고 Hint를 주는거다. Hint는 Hibernate만 있음.
+
+
+        Member findMemberReadOnly = memberRepository.findReadOnlyByUsername("member2");
+        findMember.setUsername("hihi");
+        em.flush();
+
+        //update문이 나가지 않는다. 이미 readOnly로 애초에 Update를 염두에 두지 않는다.
 
     }
+
+    @Test
+    public void lock() throws Exception {
+        //given
+        Member member1 = memberRepository.save(new Member("member1", 10));
+        em.flush();
+        em.clear();
+        //when
+        List<Member> findMember = memberRepository.findLockByUsername("member1");
+        //lockTest
+        //then
+    }
+
+
 }
