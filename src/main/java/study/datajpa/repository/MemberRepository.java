@@ -17,7 +17,7 @@ import java.util.Optional;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
-public interface MemberRepository extends JpaRepository<Member,Long> {
+public interface MemberRepository extends JpaRepository<Member,Long>, MemberRepositoryCustom{
     List<Member> findByusernameAndAgeGreaterThan(String username, int age);
 
     @Query(name = "Member.findByUsername")
