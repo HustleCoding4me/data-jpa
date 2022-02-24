@@ -673,6 +673,40 @@ public int bulkAgePlus(int age) {
 
 
 
+#### API 구현시 `@PathVariable`로 id받아 자동 Entity 매핑하기
+
+> 어떤 Entity를 조회할 때, id 값으로 받는 경우에 사용하면 편하다.
+
+```java
+
+@RestController
+@RequiredArgsConstructor
+public class MemberController {
+    private final MemberRepository memberRepository;
+
+    **//1번 우리가 예상하는 구현**
+    @GetMapping("/getMember/{id}")
+    public String findMember(@PathVariable("id") Long id) {
+        Member member = memberRepository.findById(id).get();
+        return member.getUsername();
+    }
+
+    **//2번 Spring이 id로 자동으로 Member 삽입**
+    @GetMapping("/getMember/{id}/autoConstruct")
+    public String findMember(@PathVariable("id") Member member) {
+        return member.getUsername();
+    }
+}
+```
+
+>> 1번 구현은 우리가 생각하는 기존 구현이다. repository로 findById로 객체를 가져온다.
+>> 2번은 `@PathVariable`로 id를 받았는데 그대로 Member를 선언했다. Spring이 1번 구현을 자동으로 해준다. 두 코드의 결과는 동일
+
+---
+
+> ### 💥유의사항
+> @Transaction 범위 안에서 작동한 것이 아니므로 DB 수정은 이루어지지 않는다. 단순 조회에 사용하길 권장함.
+
 
 
 
