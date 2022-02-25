@@ -707,15 +707,128 @@ public class MemberController {
 > ### 💥유의사항
 > @Transaction 범위 안에서 작동한 것이 아니므로 DB 수정은 이루어지지 않는다. 단순 조회에 사용하길 권장함.
 
+#### API 구현시 자동으로 Paging, SortOrder 구현하기
+
+> Pageable 인터페이스를 구현체로 `SpringDataJPA`의 기능을 이용해 `SpringBoot`가  Parameter로 PageRequest라는 객체를 생성을 해서
+> 구현을 해준다.
+
+```java
+
+  //마지막 파라미터로 Pageable 인터페이스 받아서 쓰면 된다.
+    //파라미터 Page 넘기면 자동으로 Mapping, Paging
+    @GetMapping("/members")
+    public Page<Member> list(Pageable pageable){
+        return memberRepository.findAll(pageable);
+    }
+
+```
+
+>> 페이징을 위해 `Pageable`을 받는 `findAll`이 `PagingAndSortingRepository`에 구현되어있다.(Data JPA) 
+
+```java
+@NoRepositoryBean
+public interface PagingAndSortingRepository<T, ID> extends CrudRepository<T, ID> {
+
+	/**
+	 * Returns all entities sorted by the given options.
+	 *
+	 * @param sort
+	 * @return all entities sorted by the given options
+	 */
+	Iterable<T> findAll(Sort sort);
+
+	/**
+	 * Returns a {@link Page} of entities meeting the paging restriction provided in the {@code Pageable} object.
+	 *
+	 * @param pageable
+	 * @return a page of entities
+	 */
+	Page<T> findAll(Pageable pageable);
+}
 
 
+```
+
+>> 파라미터로 조건들을 마구마구 보낼 수 있다.
+![image](https://user-images.githubusercontent.com/37995817/155711242-b7c1b4bc-d0f4-45d7-93a9-2ea9e3775838.png)
+
+>> 구현체로 PageRequest가 생성되어 넘겨지는 모습. 이 PageRequest를 직접 구현하면 시작 Page 0 -> 1로 변경 등 구체적 작업 가능하다.
+![image](https://user-images.githubusercontent.com/37995817/155711545-73ff5ab4-9a6d-4777-bcd3-812425f15186.png)
+
+### 그럼 Parameter 없이 보내면? Default 값으로 생성된다. Default 구현 모습
+
+>> 파라미터 없이 그냥 넘기면 디폴트 값으로 페이지가 구현된다. yml에 설정한 모습
+
+```yml
+  data:
+    web:
+      pageable:
+        default-page-size: 10
+        max-page-size: 2000
 
 
+```
+>> 혹은 `@PageableDefault`를 선언해주면 제일 우선적으로 먹는다.
+```java
+@GetMapping("/members")
+    public Page<Member> list(@PageableDefault(size= 5) Pageable pageable){
+        return memberRepository.findAll(pageable);
+    }
+```
+
+### 만약 한 페이지에 여러 종류의 Entity Paging이 필요하다면
+
+> Pageable이 인터페이스기때문에 한 페이지에 여러 Entity의 페이지를 구해야할 때가 있다.
+> 그럴땐 `@Qualifier`를 사용하면 된다.
+
+>> `@PageableDefault` 사이즈도 동시에 적용해주었다.
+```java
+ @GetMapping("/members")
+    public List<Page> list(@PageableDefault(size=10)@Qualifier("member") Pageable memberPageable, @PageableDefault(size=5)@Qualifier("team") Pageable teamPageable){
+        ArrayList<Page> p = new ArrayList<>();
+
+        Page<Member> memberAll = memberRepository.findAll(memberPageable);
+        Page<Team> teamAll = teamRepository.findAll(teamPageable);
+
+        p.add(memberAll);
+        p.add(teamAll);
+        return p;
+    }
+```
+
+>> 서로 다른 size로 Team과 Member를 잘 가져오는 모습
+
+![image](https://user-images.githubusercontent.com/37995817/155714675-e83f7dc7-4559-42bc-a03e-276b09ed2545.png)
 
 
+![image](https://user-images.githubusercontent.com/37995817/155714594-6c881b44-4883-41a5-9abe-7f7e4fab6657.png)
 
 
+### Page로 Entity를 가져와서 바로 노출이 안되므로, Page를 Dto로 변경하는 법
 
+```java
+
+ @GetMapping("/members")
+    public List<MemberDto> memberDtoList(@PageableDefault(size=10) Pageable pageable){
+        return memberRepository.findAll(pageable).stream()
+                .map(m -> new MemberDto(m))
+                .collect(Collectors.toList());
+    }
+
+```
+
+> ### ✨ 유의사항 Dto의 내부에서는 Entity를 참조할 수 있으나, Entity는 Dto를 참조하면 안된다.
+> Entity는 어차피 어디서든 쓰이기 때문이다.
+
+>> `Dto Constructor`에 넣어주면 소스도 짧아지고 편하다.
+
+```java
+  public MemberDto(Member member) {
+        this.id = member.getId();
+        this.username = member.getUsername();
+    }
+
+```
 
 
 #### 실무 성능개선, Tip
