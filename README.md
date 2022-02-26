@@ -1,3 +1,4 @@
+
 #### JpaREpository 인터페이스 구성
 
 ![캡처](https://user-images.githubusercontent.com/37995817/154701822-bc37ea83-e989-485b-b3b6-bce55042e8c6.JPG)
