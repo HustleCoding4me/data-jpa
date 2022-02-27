@@ -5,7 +5,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
+import study.datajpa.entity.Member;
+import study.datajpa.entity.Team;
 
+import javax.annotation.PostConstruct;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +19,7 @@ public class DataJpaApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(DataJpaApplication.class, args);
 	}
+
 
 	@Bean
 	public AuditorAware<String> auditorProvider(){

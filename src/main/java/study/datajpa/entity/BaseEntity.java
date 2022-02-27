@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 @EntityListeners(AuditingEntityListener.class) //이벤트를 기반으로 동작한다고 선언하는 것
 @MappedSuperclass
 @Getter
-public class BaseEntity {
+public class BaseEntity extends BaseTimeEntity{
     //생성자, 수정자
 
     @CreatedBy

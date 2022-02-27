@@ -1,5 +1,7 @@
 package study.datajpa.controller;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.data.domain.Page;
@@ -39,12 +41,20 @@ public class MemberController {
     }
 
     @GetMapping("/members")
-    public List<MemberDto> memberDtoList(@PageableDefault(size=10) Pageable pageable){
-        return memberRepository.findAll(pageable).stream()
+    public Result memberDtoList(@PageableDefault(size=10) Pageable pageable){
+
+        List<MemberDto> collect = memberRepository.findAll(pageable).stream()
                 .map(m -> new MemberDto(m))
                 .collect(Collectors.toList());
+    return new Result(collect.size(),collect);
     }
 
+    @Data
+    @AllArgsConstructor
+    static class Result<T>{
+        private int count;
+        private T data;
+    }
 
     //마지막 파라미터로 Pageable 인터페이스 받아서 쓰면 된다.
     //파라미터 Page 넘기면 자동으로 Mapping, Paging
@@ -66,11 +76,4 @@ public class MemberController {
         return memberRepository.findAll(teamPageable);
     }
 
-    @PostConstruct
-    public void init() {
-        for(int i = 0; i < 100; i++){
-            memberRepository.save(new Member("user" + i,i));
-            teamRepository.save(new Team("team" + i));
-        }
-    }
 }
