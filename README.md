@@ -832,6 +832,113 @@ public interface PagingAndSortingRepository<T, ID> extends CrudRepository<T, ID>
 ```
 
 
+
+
+### `SpringDataJPA` 기본 save 작동 과정 (merge와 persist를 중심으로)
+
+> 기본적으로 `SpringDataJPA`의 기본 구현체인 `save`는 
+ * 새로운 엔티티면 저장(`persist`)
+ * 기존에 있으면 (db에서 한번이라도 퍼올렸던 경험) `merge`를 한다.
+
+>> `SimpleJpaRepository`의 save 메서드 모습. 
+```java
+@Repository
+@Transactional(readOnly = true)
+public class SimpleJpaRepository<T, ID> implements JpaRepositoryImplementation<T, ID> {
+
+@Transactional
+	@Override
+	public <S extends T> S save(S entity) {
+
+		Assert.notNull(entity, "Entity must not be null.");
+
+		if (entityInformation.isNew(entity)) {
+			em.persist(entity);
+			return entity;
+		} else {
+			return em.merge(entity);
+		}
+	}	
+
+}
+```
+
+> 그럼 새로운 엔티티를 구분하는 방법은?
+
+* 식별자가 null (ex id = null)
+* 식별자가 자바 기본 타입 (long, int 등) 일 때, null이 안되므로 `0`인지 아닌지로 판단
+>> id값 널로 객체 생성해서 save할 때, 새로운 entity라 식별되는 사진
+>> `@GenerateValue`로 나중에 em.persist시에 id값이 등록되낟.
+![image](https://user-images.githubusercontent.com/37995817/155876813-e96b9565-c7bf-4e37-ac34-718bf2799e15.png)
+
+>> `em.persist`가 실행된 이후로 id값이 들어간 모습
+![image](https://user-images.githubusercontent.com/37995817/155876931-8f688bfc-2f32-4cd1-82bd-c7828a78f5de.png)
+
+
+
+> 문제, `@GeneratedValue`를 사용하지 않을 때, 식별자가 객체(String )일 때 , id에 특정 값을 설정할 때 merge가 발생하는 현상
+
+>> why? 식별자가 객체(String)인데, null이 아니라 기존에 있는 값이라 생각. (DB에 있을거라고 가정)
+>> step1. db에 있는지 select
+>> step2. db에 없으면 insert
+
+```java
+@Entity
+@Data
+@AllArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Item {
+    @Id
+    String id;
+}
+
+```
+
+```java
+    @Test
+    public void save(){
+        Item item = new Item("A");
+        itemRepository.save(item);
+    }
+```
+
+
+
+> select를 하기 때문에 굉장히 비효율적인 동작이 이루어진다.
+> 또한 merge는 db에서 값을 모두 가져온 다음에, 비교해서 받은 Entity의 값으로 전체 교환을 하기 때문에 
+> data update가 목적이라면 dirtyChecking을 사용하는게 좋다.
+
+>> 해결책 step1. 엔티티에 `인터페이스 Persistable`의 `isNew` 메서드 구현
+>> 해결책 step2. `@CreatedDate` 설정
+>> `@EntityListners(AuditingEntityListner.class)` + `@CreatedDate` + `Persistble 인터페이스`의 isNew 구현한 모습
+![image](https://user-images.githubusercontent.com/37995817/155877650-50ccfe90-d49d-4f12-8b3a-d0e4e4aaaf79.png)
+
+>> 해결
+>> 새로 `@Override`한 `isNew` 메서드로 createdDate == null이라 새로운 객체라고 인식된 모습
+![image](https://user-images.githubusercontent.com/37995817/155877553-97d66f56-4697-4336-9632-0fd44a9321d7.png)
+
+
+---
+
+> 결론
+> 
+> Entity 등록시 merge가 발동하면, select -> insert 과정으로 불필요한 select 문이 발생하므로 비효율적.
+> 무조건 `@GeneratedValue` 설정을 하거나, 없다면 `Persistable`의 `isNew` 메서드 구현해서 `SpringDataJPA 기본 save`메서드가 
+> merge를 피하게 만들자.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #### 실무 성능개선, Tip
 
 ### Paging
