@@ -926,17 +926,177 @@ public class Item {
 > 무조건 `@GeneratedValue` 설정을 하거나, 없다면 `Persistable`의 `isNew` 메서드 구현해서 `SpringDataJPA 기본 save`메서드가 
 > merge를 피하게 만들자.
 
+---
 
 
+#### Query By Example
+
+> 이번 스프링에서 밀어주는 query 탐색법이다. Entity를 생성해서 Example 객체로 변환, repository로 찾아버림
+> JPA Repository `findAll`과 같은 메서드에 이미 Example 버전을 만들어 놨다.
+> (left join이 안되어서 실무에선 주로 QueryDsl을 사용한다.)
+
+>> 버전 1. 그냥 Entity객체 생성해서 실행
+
+```java
+ @Test
+    public void queryByExampleTest() throws Exception {
+        //given
+        Team teamA = new Team("teamA");
+        Member m1 = new Member("m1",0,teamA);
+        Member m2 = new Member("m2",0,teamA);
+        em.persist(teamA);
+        em.persist(m1);
+        em.persist(m2);
+
+        em.flush();
+        em.clear();
+        //when
+        Member targetMem = new Member("m1");//찾고싶은 유저 Entity  
+        Example<Member> example = Example.of(targetMem);
+        memberRepository.findAll(example);
+        //then
+    }
+
+```
 
 
+```sql
+    select
+        member0_.member_id as member_i1_1_,
+        member0_.created_date as created_2_1_,
+        member0_.last_modified_date as last_mod3_1_,
+        member0_.created_by as created_4_1_,
+        member0_.last_modified_by as last_mod5_1_,
+        member0_.age as age6_1_,
+        member0_.team_id as team_id8_1_,
+        member0_.username as username7_1_ 
+    from
+        member member0_ 
+    where
+        member0_.age=0 
+        and member0_.username=?
+```
 
 
+>> 버전2. Example Matcher로 조건 걸기
+
+```java
+   @Test
+    public void queryByExampleTest() throws Exception {
+        //given
+        Team teamA = new Team("teamA");
+        Member m1 = new Member("m1",0,teamA);
+        Member m2 = new Member("m2",0,teamA);
+        em.persist(teamA);
+        em.persist(m1);
+        em.persist(m2);
+
+        em.flush();
+        em.clear();
+        //when
+        Member targetMem = new Member("m1");//찾고싶은 유저 Entity
 
 
+****
+        ExampleMatcher matcher = ExampleMatcher.matching()
+                .withIgnorePaths("age");//age는 무시하는 matcher 조건 생성 (username만 가져오게 한다)
+		
+****		
+        Example<Member> example = Example.of(targetMem,matcher);
+        memberRepository.findAll(example);
+        //then
+    }
+```
+
+```sql
+select
+        member0_.member_id as member_i1_1_,
+        member0_.created_date as created_2_1_,
+        member0_.last_modified_date as last_mod3_1_,
+        member0_.created_by as created_4_1_,
+        member0_.last_modified_by as last_mod5_1_,
+        member0_.age as age6_1_,
+        member0_.team_id as team_id8_1_,
+        member0_.username as username7_1_ 
+    from
+        member member0_ 
+    where
+        member0_.username=? //age가 무시되었다.
+
+```
+
+> Matcher에 다양한 기능이 있다. 공식 spring 문서 참조.
 
 
+>> 버전3 innerjoin
 
+```java
+
+@Test
+    public void queryByExampleTest() throws Exception {
+        //given
+        Team teamA = new Team("teamA");
+        Member m1 = new Member("m1",0,teamA);
+        Member m2 = new Member("m2",0,teamA);
+        em.persist(teamA);
+        em.persist(m1);
+        em.persist(m2);
+
+        em.flush();
+        em.clear();
+        //when
+        Member targetMem = new Member("m1");//찾고싶은 유저 Entity
+      ***
+      Team team = new Team("teamA");
+      ***
+        targetMem.setTeam(team);
+
+
+        ExampleMatcher matcher = ExampleMatcher.matching()
+                .withIgnorePaths("age");//age는 무시하는 matcher 조건 생성 (username만 가져오게 한다)
+        Example<Member> example = Example.of(targetMem,matcher);
+        memberRepository.findAll(example);
+        //then
+    }
+
+```
+
+```sql
+
+ select
+        member0_.member_id as member_i1_1_,
+        member0_.created_date as created_2_1_,
+        member0_.last_modified_date as last_mod3_1_,
+        member0_.created_by as created_4_1_,
+        member0_.last_modified_by as last_mod5_1_,
+        member0_.age as age6_1_,
+        member0_.team_id as team_id8_1_,
+        member0_.username as username7_1_ 
+    from
+        member member0_ 
+    inner join
+        team team1_ 
+            on member0_.team_id=team1_.team_id 
+    where
+        team1_.name=? 
+        and member0_.username=?
+	
+```
+
+---
+
+### 장점
+
+* 동적 쿼리를 편리하게 처리
+* 도메인 객체를 그대로 사용
+* NoSQL로 사용해도 변환 된다.(SpringData쪽 인터페이스를 사용)
+* 스프링 데이터 JPA 인터페이스에 이미 포함 `JpaRepository`
+
+
+### 주의사항 💥한계 
+* inner join까지만 가능하다. left join 등 불가, 아직 부족한 점이 많다. 실무에선 QueryDSL을 사용
+
+---
 
 
 #### 실무 성능개선, Tip
